@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "title": "输入框优化组件",
+    "description": "优化对话框中的图片与文件显示，支持内联编号、悬浮预览，以及历史消息文字与附件一键复制和重新编辑。"
+  },
+  "copy": "复制",
+  "copied": "已复制",
+  "copiedWithAttachments": "已复制文字和 {count} 个附件；粘贴到输入框即可恢复",
+  "remove": "移除附件",
+  "retry": "重试上传",
+  "close": "关闭预览",
+  "openImage": "查看大图",
+  "image": "图片",
+  "file": "文件",
+  "browserFile": "浏览器上传文件",
+  "path": "路径",
+  "size": "大小",
+  "uploading": "正在上传",
+  "uploadFailed": "上传失败",
+  "drop": "松开以添加图片或文件",
+  "restoring": "正在恢复附件…",
+  "restored": "已恢复文字和 {count} 个附件",
+  "restoreFailed": "附件恢复失败：{message}",
+  "sourceUnavailable": "源会话当前未打开，无法读取历史附件",
+  "readFailed": "无法读取附件 {name}",
+  "unknownImage": "未命名图片"
+}

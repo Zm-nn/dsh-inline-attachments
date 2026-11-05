@@ -1,0 +1,27 @@
+{
+  "meta": {
+    "title": "输入框优化组件",
+    "description": "Optimizes image and file display in the composer, with inline numbering, hover previews, one-click copying of historical messages with attachments, and re-editing."
+  },
+  "copy": "Copy",
+  "copied": "Copied",
+  "copiedWithAttachments": "Copied text and {count} attachments; paste into the composer to restore them",
+  "remove": "Remove attachment",
+  "retry": "Retry upload",
+  "close": "Close preview",
+  "openImage": "Open image",
+  "image": "Image",
+  "file": "File",
+  "browserFile": "Browser-uploaded file",
+  "path": "Path",
+  "size": "Size",
+  "uploading": "Uploading",
+  "uploadFailed": "Upload failed",
+  "drop": "Drop to add images or files",
+  "restoring": "Restoring attachments…",
+  "restored": "Restored text and {count} attachments",
+  "restoreFailed": "Could not restore attachments: {message}",
+  "sourceUnavailable": "Open the source conversation before restoring its attachments",
+  "readFailed": "Could not read attachment {name}",
+  "unknownImage": "Untitled image"
+}

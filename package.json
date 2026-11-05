@@ -1,0 +1,60 @@
+{
+  "name": "dsh-inline-attachments",
+  "version": "1.0.0-beta.1",
+  "description": "优化对话框中的图片与文件显示，支持内联编号、悬浮预览，以及历史消息文字与附件一键复制和重新编辑。",
+  "type": "module",
+  "scripts": {
+    "check": "node --check index.js && node --check client.js && node --check index.test.mjs && node --check client.test.cjs",
+    "test": "node index.test.mjs && node client.test.cjs",
+    "prepack": "npm run check && npm test"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-input-trigger",
+        "@deepseek-ai/dsh-client-ui-chat"
+      ]
+    }
+  },
+  "license": "MIT",
+  "author": "dsh-inline-attachments contributors",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "cordis",
+    "plugin",
+    "attachments",
+    "images",
+    "files"
+  ],
+  "engines": {
+    "dsh": ">=0.2.1-rc.5 <0.3.0",
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public",
+    "tag": "beta"
+  }
+}
