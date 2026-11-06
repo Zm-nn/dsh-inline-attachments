@@ -29,6 +29,7 @@ const sandbox = {
   TextEncoder,
   atob: (value) => Buffer.from(value, 'base64').toString('binary'),
   btoa: (value) => Buffer.from(value, 'binary').toString('base64'),
+  document: { body: { nodeType: 1 }, addEventListener() {}, removeEventListener() {} },
   window: {
     __ModuleLoader__: {
       load(value) { definition = value; }
@@ -40,6 +41,9 @@ vm.runInContext(source, sandbox, { filename });
 assert.equal(definition.id, 'dsh-inline-attachments');
 const plugin = definition.factory((id) => {
   if (id === 'react') return React;
+  if (id === 'react-dom') return {
+    createPortal: (node, container) => ({ type: 'portal', children: [node], container })
+  };
   if (id === '@deepseek-ai/dsh-client-ui-primitives') return { FileTypeIcon: 'FileTypeIcon', JsonBlock: 'JsonBlock' };
   throw new Error(`Unexpected module: ${id}`);
 });
@@ -195,14 +199,20 @@ const durablePreviewProps = {
   useInput: (selector) => selector({ attachmentIds: [] }),
   sessionId: 'session-1', cwd: '', t: (key) => key
 };
-const durableHoverCard = PreviewOverlay(durablePreviewProps);
+const durableHoverPortal = PreviewOverlay(durablePreviewProps);
+assert.equal(durableHoverPortal.type, 'portal', 'sent previews must render outside the composer stacking and clipping context');
+assert.equal(durableHoverPortal.container, sandbox.document.body, 'the preview portal must target the document body');
+const durableHoverCard = durableHoverPortal.children[0];
 assert.equal(durableHoverCard.props.className, 'dsh-ia-preview');
 assert.equal(durableHoverCard.children[1].children[0].type, DurableAttachmentImage, 'the sent hover card must load the durable image');
 assert.equal(durableHoverCard.children[5], null, 'sent attachments must not expose draft removal actions');
 durableHoverCard.children[1].props.onClick();
 assert.equal(durableLightboxes.length, 2, 'the hover thumbnail must also open the lightbox');
 durablePreviewState = { ...durablePreviewState, kind: 'lightbox' };
-const durableLightbox = PreviewOverlay(durablePreviewProps);
+const durableLightboxPortal = PreviewOverlay(durablePreviewProps);
+assert.equal(durableLightboxPortal.type, 'portal', 'the lightbox must leave the composer so inset zeros match the viewport');
+assert.equal(durableLightboxPortal.container, sandbox.document.body);
+const durableLightbox = durableLightboxPortal.children[0];
 assert.equal(durableLightbox.props.className, 'dsh-ia-lightbox');
 assert.equal(durableLightbox.children[2].type, DurableAttachmentImage, 'the lightbox must load the durable image through the Chat image loader');
 effects.length = 0;

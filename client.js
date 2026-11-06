@@ -2,6 +2,9 @@ window.__ModuleLoader__.load({
   id: 'dsh-inline-attachments',
   factory(require) {
     const React = require('react');
+    const ReactDOM = (() => {
+      try { return require('react-dom'); } catch { return null; }
+    })();
     const primitives = require('@deepseek-ai/dsh-client-ui-primitives');
     const h = React.createElement;
     const NS = 'inlineAttachments';
@@ -835,6 +838,14 @@ window.__ModuleLoader__.load({
           })));
     }
 
+    function portalize(node) {
+      if (!node) return node;
+      if (ReactDOM?.createPortal && typeof document !== 'undefined' && document.body) {
+        return ReactDOM.createPortal(node, document.body);
+      }
+      return node;
+    }
+
     function PreviewOverlay(props) {
       const { preview, keyboard, model, conversation, useInput, sessionId, cwd, t } = props;
       const state = React.useSyncExternalStore(preview.subscribe, preview.getSnapshot);
@@ -870,13 +881,13 @@ window.__ModuleLoader__.load({
       };
       if (state.kind === 'lightbox') {
         if (attachment.kind !== 'image') return null;
-        return h('div', { className: 'dsh-ia-lightbox', role: 'dialog', 'aria-modal': true, 'aria-label': name, onClick: preview.close },
+        return portalize(h('div', { className: 'dsh-ia-lightbox', role: 'dialog', 'aria-modal': true, 'aria-label': name, onClick: preview.close },
           h('div', { className: 'dsh-ia-lightbox-name' }, name),
           h('button', { type: 'button', className: 'dsh-ia-lightbox-close', title: translate(t, 'close'), 'aria-label': translate(t, 'close'), onClick: preview.close }, '×'),
           durable ? h(DurableAttachmentImage, {
             key: attachment.id, reference: durableRef, loadImage: state.loadImage, alt: name,
             onClick: (event) => event.stopPropagation()
-          }) : h(AttachmentImage, { key: attachment.id, attachment, alt: name, onClick: (event) => event.stopPropagation() }));
+          }) : h(AttachmentImage, { key: attachment.id, attachment, alt: name, onClick: (event) => event.stopPropagation() })));
       }
       const upload = reference || durable ? null : uploads[attachment.id];
       const failed = upload?.status === 'error';
@@ -890,7 +901,7 @@ window.__ModuleLoader__.load({
       const style = placement.openAbove ? {
         left, top: anchor.top - 8, transform: 'translateY(-100%)', width, maxHeight: placement.maxHeight
       } : { left, top: anchor.bottom + 8, width, maxHeight: placement.maxHeight };
-      return h('section', {
+      return portalize(h('section', {
         className: 'dsh-ia-preview', style,
         onMouseEnter: preview.cancelClose, onMouseLeave: preview.scheduleClose
       },
@@ -912,7 +923,30 @@ window.__ModuleLoader__.load({
         failed ? h('div', { className: 'dsh-ia-status error' }, `${translate(t, 'uploadFailed')}：${upload.message || ''}`) : null,
         reference || durable ? null : h('div', { className: 'dsh-ia-preview-actions' },
           failed ? h('button', { type: 'button', className: 'dsh-ia-button', onClick: () => conversation.retryFileUpload(sessionId, attachment.id) }, translate(t, 'retry')) : null,
-          h('button', { type: 'button', className: 'dsh-ia-button danger', onClick: () => { removeAttachment({ ...props, onRemoveAttachment: props.inputActions.removeAttachment }, attachment.id, input); preview.close(); } }, translate(t, 'remove'))));
+          h('button', { type: 'button', className: 'dsh-ia-button danger', onClick: () => { removeAttachment({ ...props, onRemoveAttachment: props.inputActions.removeAttachment }, attachment.id, input); preview.close(); } }, translate(t, 'remove')))));
+    }
+
+    function PreviewHost({ preview, ctx, t }) {
+      const state = React.useSyncExternalStore(preview.subscribe, preview.getSnapshot);
+      if (!state || typeof state.sessionId !== 'string') return null;
+      return h(SessionPreview, { key: state.sessionId, preview, ctx, t, sessionId: state.sessionId });
+    }
+
+    function SessionPreview({ preview, ctx, t, sessionId }) {
+      const actx = ctx.sessions.scope(sessionId);
+      const conversation = actx?.get('conversation');
+      if (!actx || !conversation) return null;
+      const keyboard = conversation.input.for(actx);
+      return h(PreviewOverlay, {
+        preview,
+        keyboard,
+        model: modelFor(keyboard),
+        conversation,
+        useInput: conversation.input.for(actx),
+        sessionId,
+        cwd: ctx.sessions.list?.getSnapshot()?.byId?.[sessionId]?.cwd || '',
+        t
+      });
     }
 
     function InlineAttachments(props) {
@@ -1149,9 +1183,9 @@ window.__ModuleLoader__.load({
         ctx.slots.inject('conversation.input.attachments', () => ctx.slots.register({
           name: 'conversation.input.attachments', priority: -1000, locale: NS, inject: sessionInject
         }, InlineAttachments));
-        ctx.slots.inject('conversation.input.overlay', () => ctx.slots.register({
-          name: 'conversation.input.overlay', id: 'inline-attachment-preview', order: 60, locale: NS, inject: sessionInject
-        }, PreviewOverlay));
+        ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+          name: 'shell.overlay', id: 'inline-attachment-preview', order: 70
+        }, (props) => h(PreviewHost, { ...props, preview, ctx, t: ctx.locale.bind(NS) })));
         ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
           name: 'conversation.chat.node', key: 'user', priority: -1000, locale: NS, inject: sessionInject
         }, (props) => h(UserMessageView, { ...props, copyCache, preview })));
