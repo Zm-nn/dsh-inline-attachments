@@ -1,5 +1,7 @@
 # dsh-inline-attachments 1.0.0-beta.4
 
+**简体中文** | [English](https://github.com/Zm-nn/dsh-inline-attachments/blob/main/RELEASE_NOTES.en.md)
+
 ## 本版修复
 
 - 修复发送中本地回显偶发展示原生大图和原始中文标记，在原位置显示附件胶囊并保留本地图片预览。
