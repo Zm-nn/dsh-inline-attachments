@@ -368,8 +368,9 @@ window.__ModuleLoader__.load({
       const [url, setUrl] = React.useState('');
       React.useEffect(() => {
         let alive = true;
-        setUrl('');
-        if (!reference || typeof loadImage !== 'function') return undefined;
+        const previewUrl = typeof reference?.url === 'string' ? reference.url : '';
+        setUrl(previewUrl);
+        if (previewUrl || !reference || typeof loadImage !== 'function') return undefined;
         Promise.resolve(loadImage(reference)).then((resolved) => {
           if (alive) setUrl(typeof resolved === 'string' ? resolved : resolved?.url || resolved?.src || '');
         }, () => { if (alive) setUrl(''); });
@@ -383,8 +384,8 @@ window.__ModuleLoader__.load({
     // New markers are intentionally readable to the model and carry the same
     // number as the Host attachment order. Keep accepting the original private
     // markers so messages sent before this version remain inline and clean.
-    const POSITION_MARKER = /\uE000inline-attachment:([^\uE001]+)\uE001|【(图片|文件)(\d+)：([^】\r\n]+)】|【((?:image|file)\d+(?:\.[A-Za-z0-9]{1,10})?)】/gu;
-    const READABLE_MARKER = /【(?:(?:图片|文件)\d+：[^】\r\n]+|(?:image|file)\d+(?:\.[A-Za-z0-9]{1,10})?)】/u;
+    const POSITION_MARKER = /\uE000inline-attachment:([^\uE001]+)\uE001|【\s*(图片|文件)\s*(\d+)\s*：([^】\r\n]+)】|【\s*((?:image|file)\s*\d+(?:\.[A-Za-z0-9]{1,10})?)\s*】/gu;
+    const READABLE_MARKER = /【\s*(?:(?:图片|文件)\s*\d+\s*：[^】\r\n]+|(?:image|file)\s*\d+(?:\.[A-Za-z0-9]{1,10})?)\s*】/u;
 
     function positionMarker(ref, overrides = {}) {
       const metadata = { ...referenceMetadata.get(ref), ...overrides };
@@ -470,7 +471,7 @@ window.__ModuleLoader__.load({
     }
 
     function durableReference(attachment) {
-      return attachment?.type === 'image' ? attachment.image?.attachment : attachment?.file;
+      return attachment?.type === 'image' ? attachment.image?.attachment ?? attachment.image?.preview : attachment?.file;
     }
 
     function durableAttachmentId(attachment) {
@@ -755,6 +756,64 @@ window.__ModuleLoader__.load({
       },
         h(primitives.FileTypeIcon, { path: name, size: 18 }),
         h('span', { className: 'dsh-ia-sent-name' }, displayName));
+    }
+
+    const echoAttachmentStores = new Map();
+
+    function echoAttachmentStore(sessionId) {
+      let store = echoAttachmentStores.get(sessionId);
+      if (store) return store;
+      let snapshot = { attachments: [], loadImage: null };
+      const listeners = new Set();
+      store = {
+        subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+        getSnapshot() { return snapshot; },
+        set(attachments, loadImage) {
+          snapshot = { attachments, loadImage };
+          for (const listener of listeners) listener();
+          return snapshot;
+        },
+        clear(expected) {
+          if (snapshot !== expected) return;
+          snapshot = { attachments: [], loadImage: null };
+          for (const listener of listeners) listener();
+        }
+      };
+      echoAttachmentStores.set(sessionId, store);
+      return store;
+    }
+
+    function PendingUserImages({ images, loadImage, sessionId }) {
+      const store = echoAttachmentStore(sessionId);
+      const attachments = React.useMemo(() => (images || []).map((source) => source?.preview
+        ? { type: 'image', image: { preview: source.preview } }
+        : { type: 'image', image: { attachment: source?.attachment ?? source } }), [images]);
+      React.useLayoutEffect(() => {
+        const current = store.set(attachments, loadImage);
+        return () => store.clear(current);
+      }, [store, attachments, loadImage]);
+      return null;
+    }
+
+    function InlineUserText({ raw, sessionId, preview, t }) {
+      const store = echoAttachmentStore(sessionId);
+      const state = React.useSyncExternalStore(store.subscribe, store.getSnapshot);
+      if (typeof raw !== 'string' || !READABLE_MARKER.test(raw) && !raw.includes('\uE000inline-attachment:')) return raw;
+      const output = [];
+      let cursor = 0;
+      for (const match of raw.matchAll(POSITION_MARKER)) {
+        if (match.index > cursor) output.push(raw.slice(cursor, match.index));
+        const ascii = match[5] !== undefined;
+        const number = ascii ? Number(match[5].match(/\d+/)?.[0]) : Number(match[3]);
+        const attachment = state.attachments[number - 1];
+        if (attachment) output.push(h(SentAttachment, {
+          key: `echo:${match.index}`, attachment, number, t, preview, sessionId,
+          loadImage: state.loadImage
+        }));
+        cursor = match.index + match[0].length;
+      }
+      if (cursor < raw.length) output.push(raw.slice(cursor));
+      return h(React.Fragment, null, ...output);
     }
 
     function HistoryEditActions(props) {
@@ -1205,6 +1264,12 @@ window.__ModuleLoader__.load({
         ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
           name: 'conversation.chat.node', key: 'user', priority: -1000, locale: NS, inject: sessionInject
         }, (props) => h(UserMessageView, { ...props, copyCache, preview })));
+        ctx.slots.inject('conversation.chat.user.images', () => ctx.slots.register({
+          name: 'conversation.chat.user.images', priority: -1000, locale: NS, inject: sessionInject
+        }, PendingUserImages));
+        ctx.slots.inject('conversation.user.text.node', () => ctx.slots.register({
+          name: 'conversation.user.text.node', key: 'text', priority: -1000, locale: NS, inject: sessionInject
+        }, InlineUserText));
       }
     };
   }

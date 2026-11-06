@@ -1,6 +1,6 @@
 {
   "name": "dsh-inline-attachments",
-  "version": "1.0.0-beta.3",
+  "version": "1.0.0-beta.4",
   "description": "优化对话框中的图片与文件显示，支持内联编号、悬浮预览，以及历史消息文字与附件一键复制和重新编辑。",
   "type": "module",
   "scripts": {

@@ -17,6 +17,10 @@ assert.deepEqual(legacy.map((block) => block.type), ['text', 'text', 'image', 't
 assert.equal(legacy[1].text, '【image1.png】', 'legacy markers must also gain a short ASCII name');
 assert.equal(legacy[2], image1);
 
+const spaced = interleaveContent([image1, { type: 'text', text: '前【图片 1：image.png】后' }]);
+assert.deepEqual(spaced.map((block) => block.type), ['text', 'text', 'image', 'text'], 'submission-echo markers may contain spacing around the kind and number');
+assert.equal(spaced[1].text, '【image1.png】');
+
 const plain = [{ type: 'text', text: '用户手写的【图片1：不是附件】' }];
 assert.equal(interleaveContent(plain), plain, 'marker-like text without attachments must remain untouched');
 

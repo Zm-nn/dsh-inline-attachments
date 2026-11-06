@@ -1,5 +1,5 @@
-const POSITION_MARKER = /\uE000inline-attachment:([^\uE001]+)\uE001|【(图片|文件)(\d+)：([^】\n]+)】/gu;
-const READABLE_MARKER = /【(?:图片|文件)\d+：[^】\n]+】/u;
+const POSITION_MARKER = /\uE000inline-attachment:([^\uE001]+)\uE001|【\s*(图片|文件)\s*(\d+)\s*：([^】\n]+)】/gu;
+const READABLE_MARKER = /【\s*(?:图片|文件)\s*\d+\s*：[^】\n]+】/u;
 
 function hasPositionMarker(text) {
   return text.includes('\uE000inline-attachment:') || READABLE_MARKER.test(text);

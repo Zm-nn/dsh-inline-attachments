@@ -7,7 +7,7 @@ const filename = path.join(__dirname, 'client.js');
 let source = fs.readFileSync(filename, 'utf8');
 const marker = "    return {\n      inject: ['slots', 'sessions', 'locale', 'inputTriggers'],";
 assert.ok(source.includes(marker), 'test export marker must match the client module');
-source = source.replace(marker, `    globalThis.__inlineAttachmentsTest = { InlineAttachments, UserMessageView, HistoryEditActions, SentAttachment, PreviewOverlay, DurableAttachmentImage, modelFor, referencePath, previewPlacement, contentParts, positionMarker, restoreOrderedPayload, decodePayload, syncComposerChipNumbers, syncAttachmentNumbers, watchComposerChipNumbers, writeClipboard, payloadFromClipboard, readHistoricalAttachment };\n${marker}`);
+source = source.replace(marker, `    globalThis.__inlineAttachmentsTest = { InlineAttachments, UserMessageView, PendingUserImages, InlineUserText, HistoryEditActions, SentAttachment, PreviewOverlay, DurableAttachmentImage, modelFor, referencePath, previewPlacement, contentParts, positionMarker, restoreOrderedPayload, decodePayload, syncComposerChipNumbers, syncAttachmentNumbers, watchComposerChipNumbers, writeClipboard, payloadFromClipboard, readHistoricalAttachment };\n${marker}`);
 
 const effects = [];
 const React = {
@@ -61,7 +61,7 @@ plugin.apply({
 });
 assert.equal(registeredAttachmentSource.name, 'inline-attachment');
 
-const { InlineAttachments, UserMessageView, HistoryEditActions, SentAttachment, PreviewOverlay, DurableAttachmentImage, modelFor, referencePath, previewPlacement, contentParts, positionMarker, restoreOrderedPayload, decodePayload, syncComposerChipNumbers, syncAttachmentNumbers, watchComposerChipNumbers, writeClipboard, payloadFromClipboard, readHistoricalAttachment } = sandbox.__inlineAttachmentsTest;
+const { InlineAttachments, UserMessageView, PendingUserImages, InlineUserText, HistoryEditActions, SentAttachment, PreviewOverlay, DurableAttachmentImage, modelFor, referencePath, previewPlacement, contentParts, positionMarker, restoreOrderedPayload, decodePayload, syncComposerChipNumbers, syncAttachmentNumbers, watchComposerChipNumbers, writeClipboard, payloadFromClipboard, readHistoricalAttachment } = sandbox.__inlineAttachmentsTest;
 
 assert.equal(referencePath({ ref: '@逻辑实体_20260910.xlsx' }, '/workspace/root'), '/workspace/root/逻辑实体_20260910.xlsx');
 assert.equal(referencePath({ ref: '@/Users/zm/Desktop/report.xlsx' }, '/workspace/root'), '/Users/zm/Desktop/report.xlsx');
@@ -130,6 +130,22 @@ const parsedHostInterleaved = contentParts([
 ]);
 assert.equal(parsedHostInterleaved.text, '你好，你好', 'Host captions must not leak into the bubble or copied text');
 assert.deepEqual(Array.from(parsedHostInterleaved.ordered, (item) => item.type), ['text', 'attachment', 'text', 'attachment'], 'numbered Host captions must collapse into their existing adjacent attachments');
+effects.length = 0;
+const nativeEchoImages = PendingUserImages({
+  images: [{ preview: { url: 'blob:echo', name: 'image.png' } }], sessionId: 'session-echo',
+  loadImage: async () => { throw new Error('local echo previews must use their object URL directly'); }
+});
+assert.equal(nativeEchoImages, null, 'the native large submission-echo image must be suppressed');
+const disposeEchoImages = effects[0]();
+const echo = InlineUserText({
+  raw: '你好【图片 1：image.png】', sessionId: 'session-echo', preview: sentPreview, t: (key) => key
+});
+assert.equal(echo.children[0], '你好');
+assert.equal(echo.children[1].type, SentAttachment, 'submission echo must render a chip at the original marker position');
+const echoChip = echo.children[1].type(echo.children[1].props);
+assert.equal(echoChip.children[1].children[0], 'image1.png');
+assert.equal(echoChip.props.onMouseEnter !== undefined, true, 'submission echo chips must retain hover preview');
+disposeEchoImages();
 assert.equal(sentContent[2].text, '你好，【图片1：第一张.png】你好【文件2：report.xlsx】', 'the model-facing text must contain readable names and attachment-order numbers');
 const legacyParsed = contentParts([
   { type: 'image', attachment: { attachmentId: 'legacy-image', mediaType: 'image/png' } },
