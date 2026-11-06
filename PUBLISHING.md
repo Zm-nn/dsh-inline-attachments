@@ -11,13 +11,13 @@
 在插件根目录执行：
 
 ```bash
-npm run release:prepare -- 1.0.0-beta.2
+npm run release:prepare -- 1.0.0-beta.3
 ```
 
 生成结果位于 `release/dsh-inline-attachments/`，其包名为 `dsh-inline-attachments`。若该 npm 包名已被占用，使用自己的 npm 用户名作为 scope：
 
 ```bash
-RELEASE_NAME=@YOUR_NPM_NAME/dsh-inline-attachments npm run release:prepare -- 1.0.0-beta.2
+RELEASE_NAME=@YOUR_NPM_NAME/dsh-inline-attachments npm run release:prepare -- 1.0.0-beta.3
 ```
 
 如果已经建好 GitHub 仓库，可同时写入仓库地址：
@@ -25,7 +25,7 @@ RELEASE_NAME=@YOUR_NPM_NAME/dsh-inline-attachments npm run release:prepare -- 1.
 ```bash
 RELEASE_NAME=@YOUR_NPM_NAME/dsh-inline-attachments \
 RELEASE_REPOSITORY=git+https://github.com/YOUR_GITHUB_NAME/dsh-inline-attachments.git \
-npm run release:prepare -- 1.0.0-beta.2
+npm run release:prepare -- 1.0.0-beta.3
 ```
 
 `release/` 不会进入发布包，也不会改动当前 `@local/...` 本地开发安装。
@@ -55,7 +55,7 @@ npm view dsh-inline-attachments version
 cd release/dsh-inline-attachments
 git init
 git add .
-git commit -m "release: dsh-inline-attachments 1.0.0-beta.2"
+git commit -m "release: dsh-inline-attachments 1.0.0-beta.3"
 git branch -M main
 git remote add origin https://github.com/YOUR_GITHUB_NAME/dsh-inline-attachments.git
 git push -u origin main

@@ -13,6 +13,7 @@ window.__ModuleLoader__.load({
     const COPY_CACHE_KEY = 'dsh-inline-attachments:last-copy';
     const models = new WeakMap();
     const referenceMetadata = new Map();
+    const imageLoaders = new Map();
 
     const zh = {
       meta: { title: '输入框优化组件', description: '优化对话框中的图片与文件显示，支持内联编号、悬浮预览，以及历史消息文字与附件一键复制和重新编辑。' },
@@ -477,6 +478,29 @@ window.__ModuleLoader__.load({
       return typeof reference === 'string' ? reference : reference?.attachmentId ?? reference?.id;
     }
 
+    async function readHistoricalAttachment(binding, attachment, loadImage) {
+      const reference = durableReference(attachment);
+      const result = await binding.session.readAttachment(durableAttachmentId(attachment));
+      if (result?.ok || attachment.type !== 'image' || typeof loadImage !== 'function') return result;
+      // Some gateway/session states reject the legacy per-Session attachment
+      // read even though Chat's authorized image loader can read the same
+      // durable object (and is already displaying its preview). Reuse that
+      // loader as a fallback instead of losing copy/edit restoration.
+      try {
+        const loaded = await loadImage(reference);
+        const url = typeof loaded === 'string' ? loaded : loaded?.url || loaded?.src || '';
+        if (!url) return result;
+        const response = await fetch(url);
+        if (!response.ok) return result;
+        return {
+          ok: true,
+          value: { attachment: reference, data: new Uint8Array(await response.arrayBuffer()) }
+        };
+      } catch {
+        return result;
+      }
+    }
+
     function encodePayload(value) {
       const bytes = new TextEncoder().encode(JSON.stringify(value));
       let binary = '';
@@ -772,6 +796,7 @@ window.__ModuleLoader__.load({
 
     function UserMessageView(props) {
       const { node, renderFactorySlot, sessionId, copyCache, t } = props;
+      if (sessionId && typeof props.loadImage === 'function') imageLoaders.set(sessionId, props.loadImage);
       // Editing any historical message while the Session is active would race
       // the running Turn. Subscribe to the Session-wide flag, not this Node's
       // Turn location, so every history row follows the same rule.
@@ -926,31 +951,8 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', className: 'dsh-ia-button danger', onClick: () => { removeAttachment({ ...props, onRemoveAttachment: props.inputActions.removeAttachment }, attachment.id, input); preview.close(); } }, translate(t, 'remove')))));
     }
 
-    function PreviewHost({ preview, ctx, t }) {
-      const state = React.useSyncExternalStore(preview.subscribe, preview.getSnapshot);
-      if (!state || typeof state.sessionId !== 'string') return null;
-      return h(SessionPreview, { key: state.sessionId, preview, ctx, t, sessionId: state.sessionId });
-    }
-
-    function SessionPreview({ preview, ctx, t, sessionId }) {
-      const actx = ctx.sessions.scope(sessionId);
-      const conversation = actx?.get('conversation');
-      if (!actx || !conversation) return null;
-      const keyboard = conversation.input.for(actx);
-      return h(PreviewOverlay, {
-        preview,
-        keyboard,
-        model: modelFor(keyboard),
-        conversation,
-        useInput: conversation.input.for(actx),
-        sessionId,
-        cwd: ctx.sessions.list?.getSnapshot()?.byId?.[sessionId]?.cwd || '',
-        t
-      });
-    }
-
     function InlineAttachments(props) {
-      const { attachments, keyboard, model, preview, useInput, inputActions, onAddFiles, onRemoveAttachment, canAcceptDrop, restorePayload, copyCache, t } = props;
+      const { attachments, keyboard, model, preview, useInput, inputActions, onAddFiles, onRemoveAttachment, canAcceptDrop, restorePayload, copyCache, conversation, cwd, t } = props;
       const input = useInput((value) => value);
       const [dragging, setDragging] = React.useState(false);
       const [notice, setNotice] = React.useState(null);
@@ -1103,13 +1105,28 @@ window.__ModuleLoader__.load({
 
       return h(React.Fragment, null,
         dragging && canAcceptDrop ? h('div', { className: 'dsh-ia-drop' }, h('span', null, translate(t, 'drop'))) : null,
-        notice ? h('div', { className: `dsh-ia-notice${notice.tone === 'error' ? ' error' : ''}`, role: 'status' }, notice.text) : null);
+        notice ? h('div', { className: `dsh-ia-notice${notice.tone === 'error' ? ' error' : ''}`, role: 'status' }, notice.text) : null,
+        conversation ? h(PreviewOverlay, {
+          preview, keyboard, model, conversation, useInput,
+          sessionId: props.sessionId, cwd, t, inputActions
+        }) : null);
     }
 
     return {
       inject: ['slots', 'sessions', 'locale', 'inputTriggers'],
       apply(ctx) {
-        const preview = createPreviewStore();
+        // Keep one store across client hot-module replacement. Otherwise an old
+        // message renderer can emit into a store that the new composer no longer
+        // subscribes to, making every preview interaction appear to do nothing.
+        const storeKey = '__dshInlineAttachmentsPreviewStore__';
+        const preview = window[storeKey] || createPreviewStore();
+        window[storeKey] = preview;
+        preview.close();
+        window.__dshInlineAttachmentsPreviewDebug = () => ({
+          state: preview.getSnapshot(),
+          portalAvailable: Boolean(ReactDOM?.createPortal),
+          bodyAvailable: Boolean(document.body)
+        });
         const copyCache = { current: null };
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'inline-attachments: dictionaries');
         ctx.effect(() => {
@@ -1133,10 +1150,12 @@ window.__ModuleLoader__.load({
               const files = [];
               for (const attachment of payload.attachments) {
                 const reference = durableReference(attachment);
-                const id = durableAttachmentId(attachment);
-                const result = await binding.session.readAttachment(id);
+                const result = await readHistoricalAttachment(binding, attachment, imageLoaders.get(payload.sourceSessionId));
                 const name = reference?.name || result.value?.attachment?.name || translate(t, 'unknownImage');
-                if (!result.ok) throw new Error(translate(t, 'readFailed', { name }));
+                if (!result.ok) {
+                  const detail = result.error?.message || result.error?.code;
+                  throw new Error(`${translate(t, 'readFailed', { name })}${detail ? `：${detail}` : ''}`);
+                }
                 const data = result.value.data;
                 const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
                 const type = result.value.attachment.mediaType || '';
@@ -1182,10 +1201,7 @@ window.__ModuleLoader__.load({
 
         ctx.slots.inject('conversation.input.attachments', () => ctx.slots.register({
           name: 'conversation.input.attachments', priority: -1000, locale: NS, inject: sessionInject
-        }, InlineAttachments));
-        ctx.slots.inject('shell.overlay', () => ctx.slots.register({
-          name: 'shell.overlay', id: 'inline-attachment-preview', order: 70
-        }, (props) => h(PreviewHost, { ...props, preview, ctx, t: ctx.locale.bind(NS) })));
+        }, (props) => h(InlineAttachments, { ...props, ctx })));
         ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
           name: 'conversation.chat.node', key: 'user', priority: -1000, locale: NS, inject: sessionInject
         }, (props) => h(UserMessageView, { ...props, copyCache, preview })));

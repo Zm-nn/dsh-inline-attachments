@@ -7,7 +7,7 @@ const filename = path.join(__dirname, 'client.js');
 let source = fs.readFileSync(filename, 'utf8');
 const marker = "    return {\n      inject: ['slots', 'sessions', 'locale', 'inputTriggers'],";
 assert.ok(source.includes(marker), 'test export marker must match the client module');
-source = source.replace(marker, `    globalThis.__inlineAttachmentsTest = { InlineAttachments, UserMessageView, HistoryEditActions, SentAttachment, PreviewOverlay, DurableAttachmentImage, modelFor, referencePath, previewPlacement, contentParts, positionMarker, restoreOrderedPayload, decodePayload, syncComposerChipNumbers, syncAttachmentNumbers, watchComposerChipNumbers, writeClipboard, payloadFromClipboard };\n${marker}`);
+source = source.replace(marker, `    globalThis.__inlineAttachmentsTest = { InlineAttachments, UserMessageView, HistoryEditActions, SentAttachment, PreviewOverlay, DurableAttachmentImage, modelFor, referencePath, previewPlacement, contentParts, positionMarker, restoreOrderedPayload, decodePayload, syncComposerChipNumbers, syncAttachmentNumbers, watchComposerChipNumbers, writeClipboard, payloadFromClipboard, readHistoricalAttachment };\n${marker}`);
 
 const effects = [];
 const React = {
@@ -61,7 +61,7 @@ plugin.apply({
 });
 assert.equal(registeredAttachmentSource.name, 'inline-attachment');
 
-const { InlineAttachments, UserMessageView, HistoryEditActions, SentAttachment, PreviewOverlay, DurableAttachmentImage, modelFor, referencePath, previewPlacement, contentParts, positionMarker, restoreOrderedPayload, decodePayload, syncComposerChipNumbers, syncAttachmentNumbers, watchComposerChipNumbers, writeClipboard, payloadFromClipboard } = sandbox.__inlineAttachmentsTest;
+const { InlineAttachments, UserMessageView, HistoryEditActions, SentAttachment, PreviewOverlay, DurableAttachmentImage, modelFor, referencePath, previewPlacement, contentParts, positionMarker, restoreOrderedPayload, decodePayload, syncComposerChipNumbers, syncAttachmentNumbers, watchComposerChipNumbers, writeClipboard, payloadFromClipboard, readHistoricalAttachment } = sandbox.__inlineAttachmentsTest;
 
 assert.equal(referencePath({ ref: '@逻辑实体_20260910.xlsx' }, '/workspace/root'), '/workspace/root/逻辑实体_20260910.xlsx');
 assert.equal(referencePath({ ref: '@/Users/zm/Desktop/report.xlsx' }, '/workspace/root'), '/Users/zm/Desktop/report.xlsx');
@@ -332,6 +332,10 @@ InlineAttachments({ ...props, useInput: (selector) => selector(refreshedInput) }
 effects[1]();
 assert.equal(insertions.length, 2, 'the committed references must not be inserted twice');
 assert.deepEqual(Array.from(model.mappings.values(), (mapping) => mapping.pending), [false, false], 'the second render should reconcile both references without removing them');
+const composerWithPreview = InlineAttachments({ ...props, conversation: {}, cwd: '' });
+assert.equal(composerWithPreview.children[2].type, PreviewOverlay, 'the preview overlay must use the composer conversation context directly');
+assert.equal(composerWithPreview.children[2].props.preview, props.preview, 'the composer and message renderer must share the same preview store');
+assert.ok(!source.includes("ctx.slots.inject('shell.overlay'"), 'preview rendering must not depend on the shared shell overlay registration');
 console.log('pasted image inline-reference regression test OK');
 
 async function verifyHistoryEditActions() {
@@ -439,11 +443,41 @@ async function verifyClipboardFallbacks() {
   console.log('clipboard HTML and persistent-cache fallback tests OK');
 }
 
+async function verifyHistoricalAttachmentFallback() {
+  const reference = { attachmentId: 'sha256:test', mediaType: 'image/png', name: 'image.png' };
+  const attachment = { type: 'image', image: { attachment: reference } };
+  const failure = { ok: false, error: { code: 'gateway/internal', message: 'legacy read rejected' } };
+  const binding = { session: { readAttachment: async () => failure } };
+  let requestedUrl = '';
+  sandbox.fetch = async (url) => {
+    requestedUrl = url;
+    return { ok: true, arrayBuffer: async () => Uint8Array.from([1, 2, 3, 4]).buffer };
+  };
+  const result = await readHistoricalAttachment(binding, attachment, async (value) => {
+    assert.equal(value, reference, 'the fallback must load the exact durable image reference');
+    return 'blob:historical-image';
+  });
+  assert.equal(result.ok, true, 'Chat image loading must recover an image when the legacy read is rejected');
+  assert.equal(requestedUrl, 'blob:historical-image');
+  assert.deepEqual(Array.from(result.value.data), [1, 2, 3, 4], 'restoration must receive the original image bytes');
+  assert.equal(result.value.attachment, reference);
+
+  const fileFailure = await readHistoricalAttachment(binding, {
+    type: 'file', file: { attachmentId: 'file-1', name: 'report.xlsx' }
+  }, async () => { throw new Error('files must not use the image loader'); });
+  assert.equal(fileFailure, failure, 'non-image attachments must retain the original read result');
+  console.log('historical attachment image-loader fallback tests OK');
+}
+
 verifyHistoryEditActions().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
 verifyClipboardFallbacks().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+verifyHistoricalAttachmentFallback().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
